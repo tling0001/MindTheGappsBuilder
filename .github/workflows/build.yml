@@ -68,9 +68,9 @@ jobs:
           done
 
       - name: Attest
-        uses: actions/attest-build-provenance@v1
+        uses: actions/attest-build-provenance@v2
         with:
-          subject-path: vendor_gapps/out/*.*
+          subject-path: vendor_gapps/out/MindTheGapps-*.*
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
