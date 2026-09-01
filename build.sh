@@ -6,11 +6,11 @@
 ##
 # var
 #
-DATE=$(date -u +%Y%m%d)
+DATE=$(date -u +%Y%m%d_%H%M%S)
 export GAPPS_TOP=$(realpath .)
-ANDROIDV=$1
-SDKV=$2
-GARCH=$3
+ANDROIDV=16.0.0
+SDKV=36
+GARCH=$1
 CPUARCH=$GARCH
 [ ! -z "$2" ] && CPUARCH=$2
 OUT=$GAPPS_TOP/out
@@ -41,38 +41,32 @@ function failed() {
     exit 1
 }
 
-function overlay() {
-    mkdir -pv common/proprietary/product/overlay
-    echo "Compiling RROs"
-    export PATH="$ANDROID_HOME/build-tools/36.0.0:$PATH"
-    cp -vf build/sign/testkey.pk8 cert.pk8
-    find overlay -maxdepth 1 -mindepth 1 -type d -print0 | while IFS= read -r -d '' dir; do
-        echo "Building ${dir/overlay\//}"
-        aapt p -M "$dir"/AndroidManifest.xml -S "$dir"/res/ -I $ANDROID_HOME/platforms/android-$SDKV/android.jar --min-sdk-version $SDKV --target-sdk-version $SDKV -F "${dir/overlay\//}"-unaligned.apk
-        zipalign -pvf 4 "${dir/overlay\//}"-unaligned.apk "${dir/overlay\//}".apk
-        apksigner sign --key cert.pk8 --cert build/sign/testkey.x509.pem "${dir/overlay\//}".apk
-        mv -vf "${dir/overlay\//}".apk common/proprietary/product/overlay/
-    done
-    return 0;
-}
-
 function create() {
     test -f $GLOG && rm -f $GLOG
     echo "Starting GApps compilation" > $GLOG
-    PREBUILT=$GAPPS_TOP/$GARCH/proprietary
-    test -d $OUT || mkdir -pv $OUT;
-    test -d $OUT/$GARCH || mkdir -pv $OUT/$GARCH
-    test -d $OUT/$GARCH/system || mkdir -pv $OUT/$GARCH/system
+    echo "ARCH= $GARCH" >> $GLOG
+    echo "OS= $(uname -s -r)" >> $GLOG
+    echo "NAME= $(whoami) at $(uname -n)" >> $GLOG
+    PREBUILT=$GAPPS_TOP/proprietary/$GARCH
+    test -d $OUT || mkdir $OUT;
+    test -d $OUT/$GARCH || mkdir -p $OUT/$GARCH
+    test -d $OUT/$GARCH/system || mkdir -p $OUT/$GARCH/system
     echo "Build directories are now ready" >> $GLOG
+    echo "Compiling RROs"
+    $GAPPS_TOP/overlay/build_overlays.sh $GARCH $OUT/$GARCH
     echo "Getting prebuilts..."
     echo "Copying stuff" >> $GLOG
-    cp -vf $GAPPS_TOP/toybox-$GARCH $OUT/$GARCH/toybox >> $GLOG
-    cp -rvf $PREBUILT/* $OUT/$GARCH/system >> $GLOG
-    cp -rvf $COMMON/* $OUT/$GARCH/system >> $GLOG
+    cp $GAPPS_TOP/build/toybox-$GARCH $OUT/$GARCH/toybox >> $GLOG
+    cp -r $PREBUILT/* $OUT/$GARCH/system >> $GLOG
+    cp -r $COMMON/* $OUT/$GARCH/system >> $GLOG
+    find "$OUT/$GARCH/system" -name "*.00" | while read f; do
+        cat "${f%.*}."* > "${f%.*}"
+        rm "${f%.*}."* >> $GLOG
+    done
     echo "Generating addon.d script" >> $GLOG
-    test -d $OUT/$GARCH/system/addon.d || mkdir -pv $OUT/$GARCH/system/addon.d
-    cp -vf addond_head $OUT/$GARCH/system/addon.d
-    cp -vf addond_tail $OUT/$GARCH/system/addon.d
+    test -d $OUT/$GARCH/system/addon.d || mkdir -p $OUT/$GARCH/system/addon.d
+    cp -f addond_head $OUT/$GARCH/system/addon.d
+    cp -f addond_tail $OUT/$GARCH/system/addon.d
     echo "Writing build props..."
     echo "arch=$CPUARCH" > $OUT/$GARCH/build.prop
     echo "version=$SDKV" >> $OUT/$GARCH/build.prop
@@ -82,18 +76,16 @@ function create() {
 function zipit() {
     BUILDZIP=MindTheGapps-$ANDROIDV-$GARCH-$DATE.zip
     echo "Importing installation scripts..."
-    test -d $OUT/$GARCH/META-INF || mkdir -pv $OUT/$GARCH/META-INF;
-    cp -rvf $METAINF/* $OUT/$GARCH/META-INF/ && echo "Meta copied" >> $GLOG
+    test -d $OUT/$GARCH/META-INF || mkdir $OUT/$GARCH/META-INF;
+    cp -r $METAINF/* $OUT/$GARCH/META-INF/ && echo "Meta copied" >> $GLOG
     echo "Creating package..."
     cd $OUT/$GARCH
-    find -exec touch -amt 200901010000.00 {} \;
     zip -r /tmp/$BUILDZIP . >> $GLOG
-    rm -rvf $OUT/tmp >> $GLOG
+    rm -rf $OUT/tmp >> $GLOG
     cd $GAPPS_TOP
     if [ -f /tmp/$BUILDZIP ]; then
         echo "Signing zip..."
-        apksigner sign --cert $ZIP_KEY_PEM --key $GAPPS_TOP/cert.pk8 --min-sdk-version 28 /tmp/$BUILDZIP
-        cp -vf /tmp/$BUILDZIP $OUT/$BUILDZIP
+        java -Xmx2048m -jar $SIGNAPK -w $ZIP_KEY_PEM $ZIP_KEY_PK8 /tmp/$BUILDZIP $OUT/$BUILDZIP >> $GLOG
     else
         echo "Couldn't zip files!"
         echo "Couldn't find unsigned zip file, aborting" >> $GLOG
@@ -105,8 +97,10 @@ function getsha256() {
     if [ -x $(which sha256sum) ]; then
         echo "sha256sum is installed, getting sha256..." >> $GLOG
         echo "Getting sha256sum..."
-        GSHA256=$(sha256sum $OUT/$BUILDZIP | cut -c-64)
-        echo -e "$GSHA256" > $OUT/$BUILDZIP.sha256sum
+        pushd $OUT > /dev/null
+        GSHA256=$(sha256sum $BUILDZIP)
+        echo -e "$GSHA256" > $BUILDZIP.sha256sum
+        popd > /dev/null
         echo "sha256 exported at $OUT/$BUILDZIP.sha256sum"
         return 0
     else
@@ -125,7 +119,7 @@ else
     echo "No realpath found!" >> $GLOG
 fi
 
-for func in overlay create zipit getsha256 clean; do
+for func in create zipit getsha256 clean; do
     $func
     ret=$?
     if [ "$ret" == 0 ]; then
@@ -136,5 +130,5 @@ for func in overlay create zipit getsha256 clean; do
 done
 
 echo "Done!" >> $GLOG
-echo "Build completed: $BUILDZIP"
+echo "Build completed: $GSHA256"
 exit 0
