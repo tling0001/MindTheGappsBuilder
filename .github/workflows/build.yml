@@ -44,14 +44,11 @@ jobs:
           distribution: 'temurin'
           java-version: 17
 
-      - name: Replace build script
-        run: cp -f build.sh vendor_gapps/build/gapps.sh
-
       - name: Build
         working-directory: vendor_gapps
         run: |
           echo "date=$(date -u +%Y%m%d)" >> $GITHUB_ENV
-          ./build/gapps.sh ${{ matrix.androidv }} ${{ env.ANDROID_API}} ${{ matrix.arch }}
+          ./build/gapps.sh 
 
       - name: Attest
         uses: actions/attest-build-provenance@v1
