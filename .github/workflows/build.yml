@@ -36,7 +36,7 @@ jobs:
       - name: Clone repository
         run: |
           git config --global http.version HTTP/1.1
-          git clone --depth=1 -b ${{ env.ANDROIDV }} https://github.com/tling0001/vendor_gapps.git/
+          git clone --depth=1 -b ${{ env.ANDROIDV }} https://gitlab.com/MindTheGapps/vendor_gapps.git/
 
       - name: Setup Java
         uses: actions/setup-java@v4
