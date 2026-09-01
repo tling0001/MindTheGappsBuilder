@@ -41,6 +41,21 @@ function failed() {
     exit 1
 }
 
+function overlay() {
+    mkdir -pv common/proprietary/product/overlay
+    echo "Compiling RROs"
+    export PATH="$ANDROID_HOME/build-tools/36.0.0:$PATH"
+    cp -vf build/sign/testkey.pk8 cert.pk8
+    find overlay -maxdepth 1 -mindepth 1 -type d -print0 | while IFS= read -r -d '' dir; do
+        echo "Building ${dir/overlay\//}"
+        aapt p -M "$dir"/AndroidManifest.xml -S "$dir"/res/ -I $ANDROID_HOME/platforms/android-$SDKV/android.jar --min-sdk-version $SDKV --target-sdk-version $SDKV -F "${dir/overlay\//}"-unaligned.apk
+        zipalign -pvf 4 "${dir/overlay\//}"-unaligned.apk "${dir/overlay\//}".apk
+        apksigner sign --key cert.pk8 --cert build/sign/testkey.x509.pem "${dir/overlay\//}".apk
+        mv -vf "${dir/overlay\//}".apk common/proprietary/product/overlay/
+    done
+    return 0;
+}
+
 function create() {
     test -f $GLOG && rm -f $GLOG
     echo "Starting GApps compilation" > $GLOG
@@ -48,17 +63,15 @@ function create() {
     echo "OS= $(uname -s -r)" >> $GLOG
     echo "NAME= $(whoami) at $(uname -n)" >> $GLOG
     PREBUILT=$GAPPS_TOP/$GARCH/proprietary
-    test -d $OUT || mkdir $OUT;
+    test -d $OUT || mkdir -p $OUT;
     test -d $OUT/$GARCH || mkdir -p $OUT/$GARCH
     test -d $OUT/$GARCH/system || mkdir -p $OUT/$GARCH/system
     echo "Build directories are now ready" >> $GLOG
-    echo "Compiling RROs"
-    $GAPPS_TOP/overlay/build_overlays.sh $GARCH $OUT/$GARCH
     echo "Getting prebuilts..."
     echo "Copying stuff" >> $GLOG
-    cp $GAPPS_TOP/toybox-$GARCH $OUT/$GARCH/toybox >> $GLOG
-    cp -r $PREBUILT/* $OUT/$GARCH/system >> $GLOG
-    cp -r $COMMON/* $OUT/$GARCH/system >> $GLOG
+    cp -v $GAPPS_TOP/toybox-$GARCH $OUT/$GARCH/toybox >> $GLOG
+    cp -rv $PREBUILT/* $OUT/$GARCH/system >> $GLOG
+    cp -rv $COMMON/* $OUT/$GARCH/system >> $GLOG
     find "$OUT/$GARCH/system" -name "*.00" | while read f; do
         cat "${f%.*}."* > "${f%.*}"
         rm "${f%.*}."* >> $GLOG
@@ -76,10 +89,11 @@ function create() {
 function zipit() {
     BUILDZIP=MindTheGapps-$ANDROIDV-$GARCH-$DATE.zip
     echo "Importing installation scripts..."
-    test -d $OUT/$GARCH/META-INF || mkdir $OUT/$GARCH/META-INF;
-    cp -r $METAINF/* $OUT/$GARCH/META-INF/ && echo "Meta copied" >> $GLOG
+    test -d $OUT/$GARCH/META-INF || mkdir -p $OUT/$GARCH/META-INF;
+    cp -rv $METAINF/* $OUT/$GARCH/META-INF/ && echo "Meta copied" >> $GLOG
     echo "Creating package..."
     cd $OUT/$GARCH
+    find -exec touch -amt 200901010000.00 {} \;
     zip -r /tmp/$BUILDZIP . >> $GLOG
     rm -rf $OUT/tmp >> $GLOG
     cd $GAPPS_TOP
@@ -119,7 +133,7 @@ else
     echo "No realpath found!" >> $GLOG
 fi
 
-for func in create zipit getsha256 clean; do
+for func in overlay create zipit getsha256 clean; do
     $func
     ret=$?
     if [ "$ret" == 0 ]; then
