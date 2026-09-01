@@ -48,7 +48,7 @@ jobs:
         working-directory: vendor_gapps
         run: |
           echo "date=$(date -u +%Y%m%d)" >> $GITHUB_ENV
-          ./build/gapps.sh 
+          ./build/gapps.sh ${{ matrix.androidv }} ${{ env.ANDROID_API}} ${{ matrix.arch }}
 
       - name: Attest
         uses: actions/attest-build-provenance@v1
