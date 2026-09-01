@@ -47,7 +47,7 @@ function create() {
     echo "ARCH= $GARCH" >> $GLOG
     echo "OS= $(uname -s -r)" >> $GLOG
     echo "NAME= $(whoami) at $(uname -n)" >> $GLOG
-    PREBUILT=$GAPPS_TOP/proprietary/$GARCH
+    PREBUILT=$GAPPS_TOP/$GARCH/proprietary
     test -d $OUT || mkdir $OUT;
     test -d $OUT/$GARCH || mkdir -p $OUT/$GARCH
     test -d $OUT/$GARCH/system || mkdir -p $OUT/$GARCH/system
@@ -56,7 +56,7 @@ function create() {
     $GAPPS_TOP/overlay/build_overlays.sh $GARCH $OUT/$GARCH
     echo "Getting prebuilts..."
     echo "Copying stuff" >> $GLOG
-    cp $GAPPS_TOP/build/toybox-$GARCH $OUT/$GARCH/toybox >> $GLOG
+    cp $GAPPS_TOP/toybox-$GARCH $OUT/$GARCH/toybox >> $GLOG
     cp -r $PREBUILT/* $OUT/$GARCH/system >> $GLOG
     cp -r $COMMON/* $OUT/$GARCH/system >> $GLOG
     find "$OUT/$GARCH/system" -name "*.00" | while read f; do
