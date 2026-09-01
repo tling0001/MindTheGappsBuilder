@@ -3,11 +3,21 @@ name: Build MindTheGapps
 on:
   workflow_dispatch:
     inputs:
+      androidv:
+        description: 'Android Version'
+        required: true
+        default: '16.0.0'
+        type: choice
+        options:
+          - '16.0.0'
+          - '17.0.0'
       release:
         description: "Release"
         required: true
         default: false
         type: boolean
+  schedule:
+    - cron: '0 0 1 * *'
 
 jobs:
   build:
@@ -18,7 +28,7 @@ jobs:
     strategy:
       matrix:
         arch: ["x86_64"]
-        androidv: ["16.0.0"]
+        androidv: ${{ fromJSON( github.event_name == 'schedule' && '["16.0.0", "17.0.0"]' || format('["{0}"]', inputs.androidv) ) }}
     name: Build ${{ matrix.androidv }}-${{ matrix.arch }}
     runs-on: ubuntu-24.04
     steps:
@@ -50,40 +60,31 @@ jobs:
           echo "date=$(date -u +%Y%m%d)" >> $GITHUB_ENV
           make gapps_x86_64
 
+      - name: Rename Outputs
+        working-directory: vendor_gapps/out
+        run: |
+          for f in *.*; do
+            mv "$f" "MindTheGapps-${{ matrix.androidv }}-${{ matrix.arch }}-${{ env.date }}.${f##*.}"
+          done
+
       - name: Attest
         uses: actions/attest-build-provenance@v1
         with:
           subject-path: vendor_gapps/out/*.*
 
-      - name: Upload
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Built_MindTheGapps-${{ matrix.androidv }}-${{ matrix.arch }}-${{ env.date }}
+          name: MindTheGapps-${{ matrix.androidv }}-${{ matrix.arch }}-${{ env.date }}
           path: vendor_gapps/out/*.*
           if-no-files-found: warn
-
-      - name: Setup SSH
-        if: github.event.inputs.release == 'true' && vars.SF_REPO != ''
-        run: |
-          mkdir -p ~/.ssh
-          ssh-keyscan frs.sourceforge.net >> ~/.ssh/known_hosts
-          echo "${{ secrets.SSH_KEY }}" > ~/.ssh/id_ed25519
-          chmod 0600 ~/.ssh/id_ed25519
-
-      - name: Upload to SourceForge
-        if: github.event.inputs.release == 'true' && vars.SF_REPO != ''
-        working-directory: vendor_gapps/out
-        run: |
-          mkdir -p ${{ matrix.arch }}
-          mkdir -p ${{ matrix.arch }}/${{ env.date }}
-          mv *.* ${{ matrix.arch }}/${{ env.date }}/
-          rsync -avP -e ssh ${{ matrix.arch }} ${{ vars.SF_USER }}@frs.sourceforge.net:/home/frs/project/${{ vars.SF_REPO }}/
+          compression-level: 0
 
       - name: Release
         uses: softprops/action-gh-release@v2
-        if: github.event.inputs.release == 'true'
+        if: inputs.release == 'true' || github.event_name == 'schedule'
         with:
           tag_name: ${{ env.date }}
           draft: false
           prerelease: false
-          files: vendor_gapps/out/${{ matrix.arch }}/${{ env.date }}/*.*
+          files: vendor_gapps/out/*.*
