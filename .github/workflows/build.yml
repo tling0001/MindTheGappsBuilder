@@ -48,7 +48,7 @@ jobs:
         working-directory: vendor_gapps
         run: |
           echo "date=$(date -u +%Y%m%d)" >> $GITHUB_ENV
-          ./build/gapps.sh ${{ matrix.arch }}
+          make gapps_x86_64
 
       - name: Attest
         uses: actions/attest-build-provenance@v1
