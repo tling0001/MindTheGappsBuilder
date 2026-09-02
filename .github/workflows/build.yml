@@ -82,7 +82,7 @@ jobs:
 
       - name: Release
         uses: softprops/action-gh-release@v2
-        if: inputs.release == 'true' || github.event_name == 'schedule'
+        if: inputs.release == true || github.event_name == 'schedule'
         with:
           tag_name: ${{ env.date }}
           draft: false
